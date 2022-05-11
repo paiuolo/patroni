@@ -17,14 +17,14 @@ listen stats
 	stats uri /
 
 listen master
-	bind *:5000
+	bind *:5432
 	option httpchk OPTIONS /master
 	http-check expect status 200
 	default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
 {{range gets "/members/*"}}	server {{base .Key}} {{$data := json .Value}}{{base (replace (index (split $data.conn_url "/") 2) "@" "/" -1)}} maxconn 100 check port {{index (split (index (split $data.api_url "/") 2) ":") 1}}
 {{end}}
 listen replicas
-	bind *:5001
+	bind *:5433
 	option httpchk OPTIONS /replica
 	http-check expect status 200
 	default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
