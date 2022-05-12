@@ -9,7 +9,7 @@ export DPATH
 .PHONY:	build-docker push-docker
 
 build-docker:
-	$(DOCKER) build . paiuolo/${IMAGE_NAME} -t paiuolo/${IMAGE_NAME}:${VERSION}
+	$(DOCKER) build . -t paiuolo/${IMAGE_NAME} -t paiuolo/${IMAGE_NAME}:${VERSION}
 
 push-docker:
 	$(DOCKER) push paiuolo/${IMAGE_NAME}:${VERSION}
