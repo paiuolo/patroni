@@ -2,7 +2,7 @@ DOCKER=docker
 DPATH=${CURDIR}
 
 IMAGE_NAME=patroni
-VERSION=2.1.3
+VERSION=2.1.4
 
 
 export DPATH

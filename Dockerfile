@@ -16,6 +16,10 @@ ARG LANG
 
 ENV ETCDVERSION=3.3.13 CONFDVERSION=0.16.0
 
+# postgis
+ENV POSTGIS_MAJOR 3
+ENV POSTGIS_VERSION 3.2.1+dfsg-1.pgdg110+1
+
 RUN set -ex \
     && export DEBIAN_FRONTEND=noninteractive \
     && echo 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";' > /etc/apt/apt.conf.d/01norecommend \
@@ -62,6 +66,10 @@ RUN set -ex \
     && apt-get purge -y --allow-remove-essential python3-pip gzip bzip2 util-linux e2fsprogs \
                 libmagic1 bsdmainutils login ncurses-bin libmagic-mgc e2fslibs bsdutils \
                 exim4-config gnupg-agent dirmngr libpython2.7-stdlib libpython2.7-minimal \
+    && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
+    && apt-get install -y --no-install-recommends \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* \
