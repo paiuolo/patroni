@@ -18,7 +18,7 @@ ENV ETCDVERSION=3.3.13 CONFDVERSION=0.16.0
 
 # postgis
 ENV POSTGIS_MAJOR 3
-ENV POSTGIS_VERSION 3.2.1+dfsg-1.pgdg110+1
+ENV POSTGIS_VERSION 3.3.2+dfsg-1.pgdg110+1
 
 RUN set -ex \
     && export DEBIAN_FRONTEND=noninteractive \
