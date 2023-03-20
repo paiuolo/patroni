@@ -4,10 +4,10 @@ import socket
 import tempfile
 import unittest
 
+from io import StringIO
 from mock import Mock, patch, mock_open
 from patroni.dcs import dcs_modules
 from patroni.validator import schema
-from six import StringIO
 
 available_dcs = [m.split(".")[-1] for m in dcs_modules()]
 config = {
@@ -59,10 +59,12 @@ config = {
         "use_endpoints": False,
         "pod_ip": "127.0.0.1",
         "ports": [{"name": "string", "port": 1000}],
+        "retriable_http_codes": [401],
     },
     "postgresql": {
         "listen": "127.0.0.2,::1:543",
         "connect_address": "127.0.0.2:543",
+        "proxy_address": "127.0.0.2:5433",
         "authentication": {
             "replication": {"username": "user"},
             "superuser": {"username": "user"},
@@ -92,12 +94,16 @@ config = {
 
 directories = []
 files = []
+binaries = []
 
 
 def isfile_side_effect(arg):
-    if arg.endswith('.exe'):
-        arg = arg[:-4]
     return arg in files
+
+
+def which_side_effect(arg, path=None):
+    binary = arg if path is None else os.path.join(path, arg)
+    return arg if binary in binaries else None
 
 
 def isdir_side_effect(arg):
@@ -132,6 +138,7 @@ def parse_output(output):
 @patch('os.path.exists', Mock(side_effect=exists_side_effect))
 @patch('os.path.isdir', Mock(side_effect=isdir_side_effect))
 @patch('os.path.isfile', Mock(side_effect=isfile_side_effect))
+@patch('shutil.which', Mock(side_effect=which_side_effect))
 @patch('sys.stderr', new_callable=StringIO)
 @patch('sys.stdout', new_callable=StringIO)
 class TestValidator(unittest.TestCase):
@@ -139,16 +146,17 @@ class TestValidator(unittest.TestCase):
     def setUp(self):
         del files[:]
         del directories[:]
+        del binaries[:]
 
     def test_empty_config(self, mock_out, mock_err):
-        schema({})
-        output = mock_out.getvalue()
+        errors = schema({})
+        output = "\n".join(errors)
         expected = list(sorted(['name', 'postgresql', 'restapi', 'scope'] + available_dcs))
         self.assertEqual(expected, parse_output(output))
 
     def test_complete_config(self, mock_out, mock_err):
-        schema(config)
-        output = mock_out.getvalue()
+        errors = schema(config)
+        output = "\n".join(errors)
         self.assertEqual(['postgresql.bin_dir', 'raft.bind_addr', 'raft.self_addr'], parse_output(output))
 
     def test_bin_dir_is_file(self, mock_out, mock_err):
@@ -156,10 +164,11 @@ class TestValidator(unittest.TestCase):
         files.append(config["postgresql"]["bin_dir"])
         c = copy.deepcopy(config)
         c["restapi"]["connect_address"] = 'False:blabla'
+        c["postgresql"]["listen"] = '*:543'
         c["etcd"]["hosts"] = ["127.0.0.1:2379", "1244.0.0.1:2379", "127.0.0.1:invalidport"]
         c["kubernetes"]["pod_ip"] = "127.0.0.1111"
-        schema(c)
-        output = mock_out.getvalue()
+        errors = schema(c)
+        output = "\n".join(errors)
         self.assertEqual(['etcd.hosts.1', 'etcd.hosts.2', 'kubernetes.pod_ip', 'postgresql.bin_dir',
                           'postgresql.data_dir', 'raft.bind_addr', 'raft.self_addr',
                           'restapi.connect_address'], parse_output(output))
@@ -176,8 +185,8 @@ class TestValidator(unittest.TestCase):
         c["etcd"]["host"] = "127.0.0.1:237"
         c["postgresql"]["listen"] = "127.0.0.1:5432"
         with patch('patroni.validator.open', mock_open(read_data='9')):
-            schema(c)
-        output = mock_out.getvalue()
+            errors = schema(c)
+        output = "\n".join(errors)
         self.assertEqual(['consul.host', 'etcd.host', 'postgresql.bin_dir', 'postgresql.data_dir', 'postgresql.listen',
                           'raft.bind_addr', 'raft.self_addr', 'restapi.connect_address'], parse_output(output))
 
@@ -188,15 +197,15 @@ class TestValidator(unittest.TestCase):
         directories.append(os.path.join(config["postgresql"]["data_dir"], "pg_wal"))
         files.append(os.path.join(config["postgresql"]["data_dir"], "global", "pg_control"))
         files.append(os.path.join(config["postgresql"]["data_dir"], "PG_VERSION"))
-        files.append(os.path.join(config["postgresql"]["bin_dir"], "pg_ctl"))
-        files.append(os.path.join(config["postgresql"]["bin_dir"], "initdb"))
-        files.append(os.path.join(config["postgresql"]["bin_dir"], "pg_controldata"))
-        files.append(os.path.join(config["postgresql"]["bin_dir"], "pg_basebackup"))
-        files.append(os.path.join(config["postgresql"]["bin_dir"], "postgres"))
-        files.append(os.path.join(config["postgresql"]["bin_dir"], "pg_isready"))
+        binaries.append(os.path.join(config["postgresql"]["bin_dir"], "pg_ctl"))
+        binaries.append(os.path.join(config["postgresql"]["bin_dir"], "initdb"))
+        binaries.append(os.path.join(config["postgresql"]["bin_dir"], "pg_controldata"))
+        binaries.append(os.path.join(config["postgresql"]["bin_dir"], "pg_basebackup"))
+        binaries.append(os.path.join(config["postgresql"]["bin_dir"], "postgres"))
+        binaries.append(os.path.join(config["postgresql"]["bin_dir"], "pg_isready"))
         with patch('patroni.validator.open', mock_open(read_data='12')):
-            schema(config)
-        output = mock_out.getvalue()
+            errors = schema(config)
+        output = "\n".join(errors)
         self.assertEqual(['raft.bind_addr', 'raft.self_addr'], parse_output(output))
 
     @patch('subprocess.check_output', Mock(return_value=b"postgres (PostgreSQL) 12.1"))
@@ -208,11 +217,12 @@ class TestValidator(unittest.TestCase):
         files.append(os.path.join(config["postgresql"]["data_dir"], "PG_VERSION"))
         c = copy.deepcopy(config)
         c["etcd"]["hosts"] = []
+        c["postgresql"]["listen"] = '127.0.0.2,*:543'
         del c["postgresql"]["bin_dir"]
         with patch('patroni.validator.open', mock_open(read_data='11')):
-            schema(c)
-        output = mock_out.getvalue()
-        self.assertEqual(['etcd.hosts', 'postgresql.data_dir',
+            errors = schema(c)
+        output = "\n".join(errors)
+        self.assertEqual(['etcd.hosts', 'postgresql.data_dir', 'postgresql.listen',
                           'raft.bind_addr', 'raft.self_addr'], parse_output(output))
 
     @patch('subprocess.check_output', Mock(return_value=b"postgres (PostgreSQL) 12.1"))
@@ -224,8 +234,8 @@ class TestValidator(unittest.TestCase):
         c = copy.deepcopy(config)
         del c["postgresql"]["bin_dir"]
         with patch('patroni.validator.open', mock_open(read_data='11')):
-            schema(c)
-        output = mock_out.getvalue()
+            errors = schema(c)
+        output = "\n".join(errors)
         self.assertEqual(['postgresql.data_dir', 'raft.bind_addr', 'raft.self_addr'], parse_output(output))
 
     def test_data_dir_is_empty_string(self, mock_out, mock_err):
@@ -236,7 +246,7 @@ class TestValidator(unittest.TestCase):
         c["postgresql"]["pg_hba"] = ""
         c["postgresql"]["data_dir"] = ""
         c["postgresql"]["bin_dir"] = ""
-        schema(c)
-        output = mock_out.getvalue()
+        errors = schema(c)
+        output = "\n".join(errors)
         self.assertEqual(['kubernetes', 'postgresql.bin_dir', 'postgresql.data_dir',
                           'postgresql.pg_hba', 'raft.bind_addr', 'raft.self_addr'], parse_output(output))

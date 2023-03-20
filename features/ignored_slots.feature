@@ -3,7 +3,7 @@ Feature: ignored slots
     Given I start postgres1
     Then postgres1 is a leader after 10 seconds
     And there is a non empty initialize key in DCS after 15 seconds
-    When I issue a PATCH request to http://127.0.0.1:8009/config with {"loop_wait": 2, "ignore_slots": [{"name": "unmanaged_slot_0", "database": "postgres", "plugin": "test_decoding", "type": "logical"}, {"name": "unmanaged_slot_1", "database": "postgres", "plugin": "test_decoding"}, {"name": "unmanaged_slot_2", "database": "postgres"}, {"name": "unmanaged_slot_3"}], "postgresql": {"parameters": {"wal_level": "logical"}}}
+    When I issue a PATCH request to http://127.0.0.1:8009/config with {"ignore_slots": [{"name": "unmanaged_slot_0", "database": "postgres", "plugin": "test_decoding", "type": "logical"}, {"name": "unmanaged_slot_1", "database": "postgres", "plugin": "test_decoding"}, {"name": "unmanaged_slot_2", "database": "postgres"}, {"name": "unmanaged_slot_3"}], "postgresql": {"parameters": {"wal_level": "logical"}}}
     Then I receive a response code 200
     And Response on GET http://127.0.0.1:8009/config contains ignore_slots after 10 seconds
     # Make sure the wal_level has been changed.
@@ -52,7 +52,7 @@ Feature: ignored slots
     And postgres1 has a logical replication slot named unmanaged_slot_3 with the test_decoding plugin
     And postgres1 does not have a logical replication slot named dummy_slot
 
-    # 3. After a failover the server (now a master) still has the slot.
+    # 3. After a failover the server (now a primary) still has the slot.
     When I shut down postgres0
     Then "members/postgres1" key in DCS has role=master after 3 seconds
     And postgres1 has a logical replication slot named unmanaged_slot_0 with the test_decoding plugin

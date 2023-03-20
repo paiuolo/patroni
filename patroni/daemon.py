@@ -1,14 +1,14 @@
+from __future__ import print_function
+
 import abc
 import os
 import signal
-import six
 import sys
 
 from threading import Lock
 
 
-@six.add_metaclass(abc.ABCMeta)
-class AbstractPatroniDaemon(object):
+class AbstractPatroniDaemon(abc.ABC):
 
     def __init__(self, config):
         from patroni.log import PatroniLogger
@@ -22,11 +22,15 @@ class AbstractPatroniDaemon(object):
     def sighup_handler(self, *args):
         self._received_sighup = True
 
-    def sigterm_handler(self, *args):
+    def api_sigterm(self):
         with self._sigterm_lock:
             if not self._received_sigterm:
                 self._received_sigterm = True
-                sys.exit()
+                return True
+
+    def sigterm_handler(self, *args):
+        if self.api_sigterm():
+            sys.exit()
 
     def setup_signal_handlers(self):
         self._received_sighup = False
@@ -83,16 +87,18 @@ def abstract_main(cls, validator=None):
                         help='Patroni may also read the configuration from the {0} environment variable'
                         .format(Config.PATRONI_CONFIG_VARIABLE))
     args = parser.parse_args()
+    validate_config = validator and args.validate_config
     try:
-        if validator and args.validate_config:
+        if validate_config:
             Config(args.configfile, validator=validator)
             sys.exit()
 
         config = Config(args.configfile)
     except ConfigParseError as e:
         if e.value:
-            print(e.value)
-        parser.print_help()
+            print(e.value, file=sys.stderr)
+        if not validate_config:
+            parser.print_help()
         sys.exit(1)
 
     controller = cls(config)
