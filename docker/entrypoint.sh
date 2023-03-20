@@ -7,11 +7,13 @@ if [ -f /a.tar.xz ]; then
     sudo ln -snf dash /bin/sh
 fi
 
-readonly PATRONI_SCOPE=${PATRONI_SCOPE:-batman}
-PATRONI_NAMESPACE=${PATRONI_NAMESPACE:-/service}
-readonly PATRONI_NAMESPACE=${PATRONI_NAMESPACE%/}
-#readonly DOCKER_IP=$(hostname --ip-address)
-readonly DOCKER_IP=$(hostname --ip-address | awk '{print $NF}')
+readonly PATRONI_SCOPE="${PATRONI_SCOPE:-batman}"
+PATRONI_NAMESPACE="${PATRONI_NAMESPACE:-/service}"
+readonly PATRONI_NAMESPACE="${PATRONI_NAMESPACE%/}"
+#DOCKER_IP=$(hostname --ip-address)
+#readonly DOCKER_IP
+DOCKER_IP=$(hostname --ip-address | awk '{print $NF}')
+readonly DOCKER_IP
 
 case "$1" in
     haproxy)
